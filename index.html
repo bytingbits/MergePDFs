@@ -98,7 +98,7 @@
             </main>
         </div>
         <footer class="text-center mt-6 text-gray-500 text-sm">
-            <p>Feed your neighbourhood squirrels. All processing is done locally in your browser.</p>
+            <p> Did you feed the neighbourhood squirrels today? Go give em a snack! All processing is done locally in your browser.</p>
         </footer>
     </div>
     
@@ -160,25 +160,46 @@
             dropZone.classList.remove('border-indigo-400', 'bg-gray-700/50');
         });
 
-        dropZone.addEventListener('drop', (e) => {
+        dropZone.addEventListener('drop', async (e) => {
             e.preventDefault();
             e.stopPropagation();
             dropZone.classList.remove('border-indigo-400', 'bg-gray-700/50');
             const droppedFiles = e.dataTransfer.files;
-            handleFiles(droppedFiles);
+            await handleFileSelection(droppedFiles);
         });
 
-        fileInput.addEventListener('change', (e) => {
+        fileInput.addEventListener('change', async (e) => {
             const selectedFiles = e.target.files;
-            handleFiles(selectedFiles);
+            await handleFileSelection(selectedFiles);
+            // Clear the input value AFTER processing is complete to allow re-selecting the same file.
+            e.target.value = '';
         });
 
         mergeBtn.addEventListener('click', mergePdfs);
         resetBtn.addEventListener('click', resetState);
         closeErrorBtn.addEventListener('click', () => showError(null));
 
-        // --- Functions ---
+        // --- Core Logic ---
         
+        /**
+         * Takes a FileList, processes valid PDFs, updates state, and refreshes the UI.
+         */
+        async function handleFileSelection(files) {
+            try {
+                const newFiles = await processFiles(files);
+                if (newFiles.length > 0) {
+                    filesToMerge.push(...newFiles);
+                    updateUI();
+                }
+            } catch (error) {
+                console.error("Error processing files:", error);
+                showError(error.message || "There was an error reading one or more of your files.");
+            }
+        }
+
+        /**
+         * Reads a single file and returns a promise that resolves with a structured file object.
+         */
         function readFileAsArrayBuffer(file) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -192,40 +213,34 @@
             });
         }
         
-        async function handleFiles(files) {
-            const pdfFiles = Array.from(files).filter(file => file.type === 'application/pdf');
+        /**
+         * Filters a FileList for PDFs and returns a promise that resolves with an array of processed file objects.
+         */
+        function processFiles(files) {
+             const pdfFiles = Array.from(files).filter(file => file.type === 'application/pdf');
             
             if (pdfFiles.length === 0 && files.length > 0) {
-                showError("Please select PDF files only.");
-                fileInput.value = ''; // Clear input even if non-PDFs are selected
-                return;
+                // Throws an error that will be caught by the caller (handleFileSelection)
+                throw new Error("Please select PDF files only.");
             }
 
             if (pdfFiles.length === 0) {
-                return;
+                return Promise.resolve([]); // Return an empty array if no PDFs are dropped/selected
             }
-
-            try {
-                const newFiles = await Promise.all(pdfFiles.map(readFileAsArrayBuffer));
-                filesToMerge.push(...newFiles);
-                updateUI(); // Update UI once after all files are processed
-            } catch (error) {
-                console.error("Error reading files:", error);
-                showError("There was an error reading one or more of your files.");
-            } finally {
-                // Clear the input value to allow selecting the same file again.
-                // This is done in 'finally' to ensure it runs even if reading fails.
-                fileInput.value = '';
-            }
+            
+            return Promise.all(pdfFiles.map(readFileAsArrayBuffer));
         }
 
+        /**
+         * Renders the file list based on the current state of filesToMerge array.
+         */
         function updateUI() {
             fileList.innerHTML = '';
             if (filesToMerge.length > 0) {
                 fileListContainer.classList.remove('hidden');
                 actionButtons.classList.remove('hidden');
                 
-                filesToMerge.forEach((file, index) => {
+                filesToMerge.forEach((file) => {
                     const li = document.createElement('li');
                     li.className = 'file-item bg-gray-700/50 p-3 rounded-lg flex items-center justify-between';
                     li.dataset.id = file.id;
@@ -284,19 +299,20 @@
                 const sortedFileIds = Array.from(fileList.children).map(li => li.dataset.id);
                 const sortedFiles = sortedFileIds.map(id => filesToMerge.find(f => f.id === id));
                 
+                let successfulMerges = 0;
                 for (const file of sortedFiles) {
                     try {
                         const pdf = await PDFDocument.load(file.data);
                         const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
                         copiedPages.forEach((page) => mergedPdf.addPage(page));
+                        successfulMerges++;
                     } catch(e) {
                          console.error(`Skipping corrupted or protected file: ${file.name}`, e);
-                         // Skip this file and continue with the next ones
                     }
                 }
                 
                 if (mergedPdf.getPageCount() === 0) {
-                    showError('No valid PDF pages could be merged. The selected files might be corrupted or password-protected.');
+                    showError('No valid PDF pages could be merged. The selected files might all be corrupted or password-protected.');
                     return;
                 }
 
