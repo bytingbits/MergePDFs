@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title> 🐿️ PDF Merger</title>
+    <title>🐿️ PDF Merger</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
@@ -98,7 +98,7 @@
             </main>
         </div>
         <footer class="text-center mt-6 text-gray-500 text-sm">
-            <p>&copy; Feed your local squirrels and keep merging PDFs. All processing is done locally. </p>
+            <p>&copy; Feed your local squirrels. All processing is done locally in your browser.</p>
         </footer>
     </div>
     
@@ -179,7 +179,20 @@
 
         // --- Functions ---
         
-        function handleFiles(files) {
+        function readFileAsArrayBuffer(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve({
+                    name: file.name,
+                    data: reader.result,
+                    id: 'file-' + Date.now() + Math.random()
+                });
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
+        }
+        
+        async function handleFiles(files) {
             const pdfFiles = Array.from(files).filter(file => file.type === 'application/pdf');
             
             if (pdfFiles.length === 0 && files.length > 0) {
@@ -187,20 +200,22 @@
                 return;
             }
 
-            for (const file of pdfFiles) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    filesToMerge.push({
-                        name: file.name,
-                        data: e.target.result,
-                        id: 'file-' + Date.now() + Math.random()
-                    });
-                    updateUI();
-                };
-                reader.readAsArrayBuffer(file);
+            if (pdfFiles.length === 0) {
+                return;
             }
-            // Clear the input value to allow selecting the same file again
-            fileInput.value = '';
+
+            try {
+                const newFiles = await Promise.all(pdfFiles.map(readFileAsArrayBuffer));
+                filesToMerge.push(...newFiles);
+                updateUI(); // Update UI once after all files are processed
+            } catch (error) {
+                console.error("Error reading files:", error);
+                showError("There was an error reading one or more of your files.");
+            } finally {
+                // Clear the input value to allow selecting the same file again.
+                // This is done in 'finally' to ensure it runs even if reading fails.
+                fileInput.value = '';
+            }
         }
 
         function updateUI() {
@@ -317,3 +332,4 @@
     </script>
 </body>
 </html>
+
