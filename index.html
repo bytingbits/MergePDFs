@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🐿️ PDF Merger</title>
+    <title>PDF Merger</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
@@ -57,7 +57,7 @@
     <div class="w-full max-w-2xl mx-auto p-4 md:p-8">
         <div class="bg-gray-800 rounded-2xl shadow-2xl p-6 md:p-8">
             <header class="text-center mb-6">
-                <h1 class="text-3xl md:text-4xl font-bold text-indigo-400">PDF Merger</h1>
+                <h1 class="text-3xl md:text-4xl font-bold text-indigo-400">🐿️ PDF Merger</h1>
                 <p class="text-gray-400 mt-2">Combine multiple PDFs into one. Fast, secure, and client-side.</p>
             </header>
 
@@ -98,7 +98,7 @@
             </main>
         </div>
         <footer class="text-center mt-6 text-gray-500 text-sm">
-            <p>&copy; Feed your local squirrels. All processing is done locally in your browser.</p>
+            <p>Feed your neighbourhood squirrels. All processing is done locally in your browser.</p>
         </footer>
     </div>
     
@@ -197,6 +197,7 @@
             
             if (pdfFiles.length === 0 && files.length > 0) {
                 showError("Please select PDF files only.");
+                fileInput.value = ''; // Clear input even if non-PDFs are selected
                 return;
             }
 
@@ -230,12 +231,12 @@
                     li.dataset.id = file.id;
 
                     li.innerHTML = `
-                        <div class="flex items-center gap-3">
-                           <i class="fa-solid fa-grip-vertical text-gray-500 cursor-move"></i>
+                        <div class="flex items-center gap-3 overflow-hidden">
+                           <i class="fa-solid fa-grip-vertical text-gray-500 cursor-move mr-2"></i>
                            <i class="fa-regular fa-file-pdf text-indigo-400 text-xl"></i>
-                           <span class="font-medium truncate">${file.name}</span>
+                           <span class="font-medium truncate ml-2">${file.name}</span>
                         </div>
-                        <button class="remove-btn text-gray-400 hover:text-red-500 transition-colors" data-id="${file.id}">
+                        <button class="remove-btn text-gray-400 hover:text-red-500 transition-colors ml-2" data-id="${file.id}">
                             <i class="fas fa-times-circle"></i>
                         </button>
                     `;
@@ -284,9 +285,19 @@
                 const sortedFiles = sortedFileIds.map(id => filesToMerge.find(f => f.id === id));
                 
                 for (const file of sortedFiles) {
-                    const pdf = await PDFDocument.load(file.data);
-                    const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
-                    copiedPages.forEach((page) => mergedPdf.addPage(page));
+                    try {
+                        const pdf = await PDFDocument.load(file.data);
+                        const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+                        copiedPages.forEach((page) => mergedPdf.addPage(page));
+                    } catch(e) {
+                         console.error(`Skipping corrupted or protected file: ${file.name}`, e);
+                         // Skip this file and continue with the next ones
+                    }
+                }
+                
+                if (mergedPdf.getPageCount() === 0) {
+                    showError('No valid PDF pages could be merged. The selected files might be corrupted or password-protected.');
+                    return;
                 }
 
                 const mergedPdfBytes = await mergedPdf.save();
@@ -294,7 +305,7 @@
                 
             } catch (error) {
                 console.error('Error merging PDFs:', error);
-                showError('Could not merge the selected PDFs. One or more files might be corrupted or password-protected.');
+                showError('A critical error occurred while merging PDFs.');
             } finally {
                 loadingModal.classList.add('hidden');
             }
